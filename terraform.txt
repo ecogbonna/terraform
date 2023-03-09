@@ -1,0 +1,203 @@
+================================ Task 1. Set up Terraform and Cloud Shell ===================================
+
+tfinfra
+	main.tf
+	provider.tf
+	variables.tf
+	modules/
+	└── instances
+		├── instances.tf
+		├── outputs.tf
+		└── variables.tf
+	└── network
+		├── network.tf
+		├── outputs.tf
+		└── variables.tf
+
+
+mkdir tfinfra && cd tfinfra	
+touch main.tf
+touch provider.tf
+touch variables.tf
+mkdir modules/
+mkdir -p modules/instances
+mkdir -p modules/networks
+touch modules/instances/instances.tf
+touch modules/instances/outputs.tf
+touch modules/instances/variables.tf
+touch modules/networks/network.tf
+touch modules/networks/outputs.tf
+touch modules/networks/variables.tf
+
+
+main.tf
+=------
+terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+    }
+  }
+}
+
+
+
+provider.tf
+=----------
+provider "google" {
+  project     = var.project_id
+}
+
+
+Step 2: Fill out the variables.tf files in the root directory and within the modules:
+
+variable "project_id" {
+  description = "The name of the project resource is being created"
+  default     = "qwiklabs-gcp-03-ee0b9243cb46"
+}
+
+
+terraform init
+
+
+================================ Task 2. Create mynetwork and its resources ===================================
+network.tf
+=---------
+# Create the auto-mode network "mynetwork"
+resource "google_compute_network" "mynetwork" {
+name = var.network_name
+# RESOURCE properties go here
+auto_create_subnetworks = "true"
+}
+# Add a firewall rule to allow HTTP, SSH, RDP and ICMP traffic on mynetwork
+resource "google_compute_firewall" "mynetwork-allow-http-ssh-rdp-icmp" {
+name = "mynetwork-allow-http-ssh-rdp-icmp"
+# RESOURCE properties go here
+network = google_compute_network.mynetwork.self_link	#Implicit dependency
+allow {
+    protocol = "tcp"
+    ports    = ["22", "80", "3389"]
+    }
+allow {
+    protocol = "icmp"
+    }
+source_ranges = ["0.0.0.0/0"]
+}
+
+
+variable.tf
+=----------
+variable "project_id" {
+  description = "The name of the project resource is being created"
+  default     = "qwiklabs-gcp-03-ee0b9243cb46"
+}
+variable "network_name" {
+  description = "The name of the network being created"
+  default     = "mynetwork"
+}
+
+
+
+
+outputs.tf
+=---------
+output "mynetwork_self_link" {
+  description = "URI of network mynetwork"
+  value       = google_compute_network.mynetwork.self_link
+}
+output "mynetwork_id" {
+  description = "ID of mynetwork"
+  value       = google_compute_network.mynetwork.id
+}
+
+
+terraform init
+terraform plan
+terraform apply
+
+
+
+instance.tf
+=----------
+resource "google_compute_instance" "vm_instance" {
+  name = "${var.instance_name}"
+  # RESOURCE properties go here
+  zone         = "${var.instance_zone}"
+  machine_type = "${var.instance_type}"
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"
+      }
+  }
+  network_interface {
+    network = "${var.instance_network}"
+    access_config {
+      # Allocate a one-to-one NAT IP to the instance
+    }
+  }
+}
+
+
+variables.tf
+=-----------
+variable "instance_name" {}
+variable "instance_zone" {}
+variable "instance_type" {
+  default = "e2-micro"
+  }
+variable "instance_network" {}
+
+
+
+main.tf
+=------
+terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+    }
+  }
+}
+# Calling networks module
+module "networks" {
+  source       = "./modules/networks"
+  network_name = "mynetwork"
+}
+# Create the mynet-us-vm instance
+module "mynet-us-vm" {
+  source           = "./modules/instances"
+  instance_name    = "mynet-us-vm"
+  instance_zone    = "us-west1-a"
+  instance_network = "mynetwork"
+}
+# Create the mynet-eu-vm" instance
+module "mynet-eu-vm" {
+  source           = "./modules/instances"
+  instance_name    = "mynet-eu-vm"
+  instance_zone    = "europe-west1-d"
+  instance_network = "mynetwork"
+}
+
+
+
+terraform fmt
+terraform init
+terraform plan
+terraform apply
+
+
+
+Task 3. Verify your deployment
+In the Cloud Console, verify that the resources were created.
+
+
+Task 4: Destroy the infrastructure
+
+Note: If you see below error, rerun "terraform destroy"
+Error: Error waiting for Deleting Network: The network resource 'projects/qwiklabs-gcp-03-ee0b9243cb46/global/networks/mynetwork' is already being used by 'projects/qwiklabs-gcp-03-ee0b9243cb46/
+zones/us-west1-a/instances/mynet-us-vm'
+
+
+
+Links:
+https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_network#attributes-reference
